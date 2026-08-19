@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Relationship validation now answers by looking up the ArchiMate 3.2 relationship tables (Appendix B.5) instead of reasoning about element categories. `src/relationships/matrix.generated.ts` is generated from `relationships.xml` in the Archi repository and holds 3844 source-target pairs over 62 concepts; regenerate it with `node scripts/generate-matrix.mjs`. Measured over all 39,600 combinations of 60 element types and 11 relationship types, the previous implementation rejected 2,091 relationships the specification permits and accepted 6,544 it lists nowhere. The five exported functions of `src/relationships/validation.ts` are unchanged. See [docs/relationship-validation.md](docs/relationship-validation.md).
+
+### Changed
+- Dependency bumps: fast-xml-parser to ^5.10.1, sharp to ^0.35.3, uuid to ^14.0.1, vitest and @vitest/coverage-v8 to ^4.1.10, @amiceli/vitest-cucumber to ^7.0.0.
+
 ## [0.4.0] - 2026-05-05
 
 ### Added

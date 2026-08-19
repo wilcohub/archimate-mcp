@@ -1,7 +1,8 @@
 # Relationship validation
 
-Since 0.4.1 the validator answers by looking up the ArchiMate 3.2 relationship
-tables instead of reasoning about element categories.
+In this fork the validator answers by looking up the ArchiMate 3.2 relationship
+tables instead of reasoning about element categories. The change is unreleased:
+it sits on `main` here and is not part of any published version.
 
 ## Where the answer comes from
 
