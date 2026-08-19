@@ -1,9 +1,21 @@
 /**
  * ArchiMate Relationship Validation
- * Based on ArchiMate 3.2 Specification Appendix B
  *
- * This module validates whether a relationship type is permitted between
- * two element types according to the ArchiMate specification.
+ * Deze module bepaalt of een relatietype tussen twee elementtypen is toegestaan.
+ * Het antwoord komt uit een opzoeking in de relatiematrix, niet uit een
+ * redenering over elementcategorieen.
+ *
+ * De matrix staat in matrix.generated.ts en is gegenereerd uit
+ * relationships.xml van Archi (repository archimatetool/archi, submap
+ * com.archimatetool.model/model). Dat bestand is een machineleesbare weergave
+ * van bijlage B.5 van de ArchiMate 3.2 Specification (The Open Group, C226),
+ * de bijlage die alle toegestane relaties in de taal opsomt.
+ *
+ * De matrix maakt geen onderscheid tussen directe en afgeleide relaties. Zij
+ * beantwoordt uitsluitend de vraag of een relatie is toegestaan. Buiten haar
+ * bereik vallen de derivatiebeperkingen uit B.4, de regels rond junctions en
+ * relaties tussen relaties uit B.6, en de viewpointbeperkingen uit
+ * viewpoints.xml.
  */
 
 import {
@@ -17,225 +29,59 @@ import {
   ImplementationElementTypes,
   CompositeElementTypes,
   getLayerForElementType,
-  Layer,
 } from '../model/types.js';
 
-// Element category classifications
-type ElementCategory =
-  | 'ActiveStructure'
-  | 'BehaviorInternal'
-  | 'BehaviorExternal'
-  | 'PassiveStructure'
-  | 'Event'
-  | 'Motivation'
-  | 'Strategy'
-  | 'ImplementationMigration'
-  | 'Composite';
+import {
+  RELATION_MATRIX,
+  RELATION_LETTERS,
+  MATRIX_SOURCE_VERSION,
+} from './matrix.generated.js';
+
+/** Alle relatietypen, in de volgorde waarin ze worden teruggegeven. */
+const ALL_RELATIONSHIP_TYPES: RelationshipType[] = [
+  'Composition', 'Aggregation', 'Assignment', 'Realization',
+  'Serving', 'Access', 'Influence', 'Association',
+  'Triggering', 'Flow', 'Specialization',
+];
+
+/** Alle elementtypen die de server kent. */
+const ALL_ELEMENT_TYPES = [
+  ...MotivationElementTypes,
+  ...StrategyElementTypes,
+  ...BusinessElementTypes,
+  ...ApplicationElementTypes,
+  ...TechnologyElementTypes,
+  ...ImplementationElementTypes,
+  ...CompositeElementTypes,
+] as ElementType[];
+
+/** Relatietype naar de letter waarmee de matrix het aanduidt. */
+const TYPE_TO_LETTER: Record<string, string> = Object.fromEntries(
+  Object.entries(RELATION_LETTERS).map(([letter, name]) => [name, letter])
+);
 
 /**
- * Classify an element type into its category
+ * De lettercombinatie voor een bron- en doelconcept, of een lege reeks wanneer
+ * het paar niet in de matrix voorkomt.
  */
-function getElementCategory(elementType: ElementType): ElementCategory {
-  // Active Structure Elements (internal)
-  const activeStructure: ElementType[] = [
-    'BusinessActor', 'BusinessRole', 'BusinessCollaboration',
-    'ApplicationComponent', 'ApplicationCollaboration',
-    'Node', 'Device', 'SystemSoftware', 'TechnologyCollaboration',
-    'Equipment', 'Facility',
-  ];
-
-  // External Active Structure (Interfaces)
-  const interfaces: ElementType[] = [
-    'BusinessInterface', 'ApplicationInterface', 'TechnologyInterface',
-  ];
-
-  // Internal Behavior Elements
-  const behaviorInternal: ElementType[] = [
-    'BusinessProcess', 'BusinessFunction', 'BusinessInteraction',
-    'ApplicationFunction', 'ApplicationInteraction', 'ApplicationProcess',
-    'TechnologyFunction', 'TechnologyProcess', 'TechnologyInteraction',
-  ];
-
-  // External Behavior Elements (Services)
-  const services: ElementType[] = [
-    'BusinessService', 'ApplicationService', 'TechnologyService',
-  ];
-
-  // Event Elements
-  const events: ElementType[] = [
-    'BusinessEvent', 'ApplicationEvent', 'TechnologyEvent', 'ImplementationEvent',
-  ];
-
-  // Passive Structure Elements
-  const passiveStructure: ElementType[] = [
-    'BusinessObject', 'Contract', 'Representation',
-    'DataObject', 'Artifact', 'Material',
-  ];
-
-  // Strategy Elements
-  const strategy: ElementType[] = [
-    'Resource', 'Capability', 'ValueStream', 'CourseOfAction',
-  ];
-
-  // Motivation Elements
-  const motivation: ElementType[] = [
-    'Stakeholder', 'Driver', 'Assessment', 'Goal', 'Outcome',
-    'Principle', 'Requirement', 'Constraint', 'Meaning', 'Value',
-  ];
-
-  // Implementation & Migration
-  const implMigration: ElementType[] = [
-    'WorkPackage', 'Deliverable', 'Plateau', 'Gap',
-  ];
-
-  // Composite
-  const composite: ElementType[] = [
-    'Grouping', 'Location', 'Product',
-  ];
-
-  if (activeStructure.includes(elementType) || interfaces.includes(elementType)) return 'ActiveStructure';
-  if (behaviorInternal.includes(elementType)) return 'BehaviorInternal';
-  if (services.includes(elementType)) return 'BehaviorExternal';
-  if (events.includes(elementType)) return 'Event';
-  if (passiveStructure.includes(elementType)) return 'PassiveStructure';
-  if (strategy.includes(elementType)) return 'Strategy';
-  if (motivation.includes(elementType)) return 'Motivation';
-  if (implMigration.includes(elementType)) return 'ImplementationMigration';
-  if (composite.includes(elementType)) return 'Composite';
-
-  return 'Composite'; // Default fallback
+function lookup(sourceType: string, targetType: string): string {
+  return RELATION_MATRIX[`${sourceType}>${targetType}`] ?? '';
 }
 
 /**
- * Check if elements are in the same layer
- */
-function isSameLayer(sourceType: ElementType, targetType: ElementType): boolean {
-  return getLayerForElementType(sourceType) === getLayerForElementType(targetType);
-}
-
-/**
- * Get the layer hierarchy level (higher number = lower in stack)
- */
-function getLayerLevel(layer: Layer): number {
-  const levels: Record<Layer, number> = {
-    'Motivation': 0,
-    'Strategy': 1,
-    'Business': 2,
-    'Application': 3,
-    'Technology': 4,
-    'Physical': 4,
-    'Implementation': 5,
-    'Composite': 6,
-  };
-  return levels[layer];
-}
-
-/**
- * Check if a relationship is valid between two element types
+ * Check if a relationship is valid between two element types.
+ *
+ * Het antwoord volgt de ArchiMate 3.2-specificatie. Komt een van beide typen
+ * niet in de matrix voor, dan is het antwoord false.
  */
 export function isValidRelationship(
   sourceType: ElementType,
   targetType: ElementType,
   relationshipType: RelationshipType
 ): boolean {
-  const sourceCategory = getElementCategory(sourceType);
-  const targetCategory = getElementCategory(targetType);
-  const sourceLayer = getLayerForElementType(sourceType);
-  const targetLayer = getLayerForElementType(targetType);
-
-  // Special rules for specific relationship types
-  switch (relationshipType) {
-    case 'Composition':
-    case 'Aggregation':
-      // Generally allowed within same type or related types
-      // Must be same layer or composite elements
-      if (sourceType === targetType) return true;
-      if (sourceCategory === 'Composite' || targetCategory === 'Composite') return true;
-      if (isSameLayer(sourceType, targetType)) return true;
-      return false;
-
-    case 'Specialization':
-      // Must be same element type
-      return sourceType === targetType;
-
-    case 'Assignment':
-      // Active structure to behavior, or behavior to passive structure
-      return (
-        (sourceCategory === 'ActiveStructure' && (targetCategory === 'BehaviorInternal' || targetCategory === 'BehaviorExternal')) ||
-        (sourceCategory === 'BehaviorInternal' && targetCategory === 'PassiveStructure') ||
-        // Work packages can be assigned to business roles
-        (sourceType === 'WorkPackage' && sourceCategory === 'ActiveStructure')
-      );
-
-    case 'Realization':
-      // Lower layer elements realize higher layer elements
-      // Or behavior realizes services
-      if (sourceCategory === 'BehaviorInternal' && targetCategory === 'BehaviorExternal') return true;
-      if (getLayerLevel(sourceLayer) > getLayerLevel(targetLayer)) return true;
-      // Strategy elements are realized by core elements
-      if (targetCategory === 'Strategy') return true;
-      // Motivation elements can be realized
-      if (targetCategory === 'Motivation') return true;
-      // Artifacts realize application/data
-      if (sourceType === 'Artifact') return true;
-      return false;
-
-    case 'Serving':
-      // Services serve other elements
-      // Higher layer elements serve lower layer elements
-      if (sourceCategory === 'BehaviorExternal') return true;
-      if (sourceCategory === 'ActiveStructure' && targetCategory === 'ActiveStructure') return true;
-      if (getLayerLevel(sourceLayer) > getLayerLevel(targetLayer)) return true;
-      // Capabilities serve value streams
-      if (sourceType === 'Capability' && targetType === 'ValueStream') return true;
-      return isSameLayer(sourceType, targetType);
-
-    case 'Access':
-      // Behavior accesses passive structure
-      return (
-        (sourceCategory === 'BehaviorInternal' || sourceCategory === 'BehaviorExternal' || sourceCategory === 'Event') &&
-        (targetCategory === 'PassiveStructure')
-      );
-
-    case 'Influence':
-      // Motivation elements influence each other
-      // Other elements can influence motivation elements
-      // Any element can influence motivation elements
-      return targetCategory === 'Motivation';
-
-    case 'Triggering':
-      // Events trigger behavior, behavior triggers behavior
-      return (
-        sourceCategory === 'Event' ||
-        sourceCategory === 'BehaviorInternal' ||
-        sourceCategory === 'BehaviorExternal' ||
-        targetCategory === 'Event' ||
-        targetCategory === 'BehaviorInternal' ||
-        targetCategory === 'BehaviorExternal' ||
-        sourceCategory === 'ImplementationMigration' ||
-        targetCategory === 'ImplementationMigration'
-      );
-
-    case 'Flow':
-      // Between behavior elements or passive structure
-      return (
-        sourceCategory === 'BehaviorInternal' ||
-        sourceCategory === 'BehaviorExternal' ||
-        sourceCategory === 'Event' ||
-        targetCategory === 'BehaviorInternal' ||
-        targetCategory === 'BehaviorExternal' ||
-        targetCategory === 'Event' ||
-        sourceCategory === 'PassiveStructure' ||
-        targetCategory === 'PassiveStructure'
-      );
-
-    case 'Association':
-      // Association is allowed between almost any elements
-      return true;
-
-    default:
-      return false;
-  }
+  const letter = TYPE_TO_LETTER[relationshipType];
+  if (!letter) return false;
+  return lookup(sourceType, targetType).includes(letter);
 }
 
 /**
@@ -245,13 +91,10 @@ export function getValidRelationshipTypes(
   sourceType: ElementType,
   targetType: ElementType
 ): RelationshipType[] {
-  const allTypes: RelationshipType[] = [
-    'Composition', 'Aggregation', 'Assignment', 'Realization',
-    'Serving', 'Access', 'Influence', 'Association',
-    'Triggering', 'Flow', 'Specialization',
-  ];
-
-  return allTypes.filter(relType => isValidRelationship(sourceType, targetType, relType));
+  const letters = lookup(sourceType, targetType);
+  return ALL_RELATIONSHIP_TYPES.filter(relType =>
+    letters.includes(TYPE_TO_LETTER[relType])
+  );
 }
 
 /**
@@ -261,17 +104,7 @@ export function getValidTargetTypes(
   sourceType: ElementType,
   relationshipType: RelationshipType
 ): ElementType[] {
-  const allTypes = [
-    ...MotivationElementTypes,
-    ...StrategyElementTypes,
-    ...BusinessElementTypes,
-    ...ApplicationElementTypes,
-    ...TechnologyElementTypes,
-    ...ImplementationElementTypes,
-    ...CompositeElementTypes,
-  ] as ElementType[];
-
-  return allTypes.filter(targetType =>
+  return ALL_ELEMENT_TYPES.filter(targetType =>
     isValidRelationship(sourceType, targetType, relationshipType)
   );
 }
@@ -293,14 +126,14 @@ export function validateRelationship(
   if (validTypes.length === 0) {
     return {
       valid: false,
-      error: `No valid relationships exist between ${sourceType} and ${targetType} in ArchiMate 3.2`,
+      error: `No valid relationships exist between ${sourceType} and ${targetType} in ArchiMate ${MATRIX_SOURCE_VERSION}`,
       suggestions: [],
     };
   }
 
   return {
     valid: false,
-    error: `${relationshipType} is not a valid relationship between ${sourceType} and ${targetType}`,
+    error: `${relationshipType} is not a valid relationship between ${sourceType} and ${targetType} in ArchiMate ${MATRIX_SOURCE_VERSION}`,
     suggestions: validTypes,
   };
 }
@@ -312,46 +145,44 @@ export function getRelationshipGuidance(
   sourceType: ElementType,
   targetType?: ElementType
 ): string {
-  const sourceCategory = getElementCategory(sourceType);
   const sourceLayer = getLayerForElementType(sourceType);
 
-  let guidance = `For ${sourceType} (${sourceLayer} layer, ${sourceCategory}):\n\n`;
+  let guidance = `For ${sourceType} (${sourceLayer} layer), per the ArchiMate ${MATRIX_SOURCE_VERSION} relationship tables (Appendix B.5):\n\n`;
 
   if (targetType) {
     const validTypes = getValidRelationshipTypes(sourceType, targetType);
     if (validTypes.length > 0) {
       guidance += `Valid relationships to ${targetType}: ${validTypes.join(', ')}\n`;
     } else {
-      guidance += `No valid direct relationships to ${targetType}\n`;
+      guidance += `No relationships from ${sourceType} to ${targetType} are permitted\n`;
     }
-  } else {
-    // General guidance
-    guidance += `Common relationships:\n`;
-
-    if (sourceCategory === 'ActiveStructure') {
-      guidance += `- Assignment: to behavior elements (processes, functions)\n`;
-      guidance += `- Composition/Aggregation: to other ${sourceLayer} active structure elements\n`;
-      guidance += `- Serving: to other active structure or behavior elements\n`;
-    }
-
-    if (sourceCategory === 'BehaviorInternal') {
-      guidance += `- Realization: to services (external behavior)\n`;
-      guidance += `- Access: to passive structure elements (objects, artifacts)\n`;
-      guidance += `- Triggering: to other behavior elements or events\n`;
-      guidance += `- Flow: to other behavior elements\n`;
-    }
-
-    if (sourceCategory === 'BehaviorExternal') {
-      guidance += `- Serving: to higher-layer elements\n`;
-      guidance += `- Access: to passive structure elements\n`;
-    }
-
-    if (sourceCategory === 'Motivation') {
-      guidance += `- Influence: to other motivation elements\n`;
-      guidance += `- Realization: from core elements\n`;
-      guidance += `- Association: to stakeholders, drivers\n`;
-    }
+    guidance += `\nThe tables list permitted relationships without distinguishing direct from derived. `;
+    guidance += `They do not cover derivation restrictions (B.4), junctions and relationships between relationships (B.6), or viewpoint constraints.\n`;
+    return guidance;
   }
+
+  // Zonder doeltype: per relatietype tellen naar hoeveel doelen het mag.
+  const counts = ALL_RELATIONSHIP_TYPES
+    .map(relType => ({ relType, targets: getValidTargetTypes(sourceType, relType) }))
+    .filter(entry => entry.targets.length > 0);
+
+  if (counts.length === 0) {
+    guidance += `No relationships from ${sourceType} are permitted.\n`;
+    return guidance;
+  }
+
+  guidance += `Permitted relationship types, with the number of element types they may point to:\n`;
+  for (const { relType, targets } of counts) {
+    const examples = targets.slice(0, 5).join(', ');
+    const more = targets.length > 5 ? `, and ${targets.length - 5} more` : '';
+    guidance += `- ${relType}: ${targets.length} target types (${examples}${more})\n`;
+  }
+  guidance += `\nCall this again with a target type for the exact answer for one pair.\n`;
 
   return guidance;
 }
+
+/**
+ * De versie van de specificatie waarop de matrix berust.
+ */
+export { MATRIX_SOURCE_VERSION };
