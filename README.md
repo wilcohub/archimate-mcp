@@ -5,7 +5,7 @@ An MCP (Model Context Protocol) server that enables LLMs to work with ArchiMate 
 ## Features
 
 - **Full ArchiMate 3.2 Support**: All element types across Motivation, Strategy, Business, Application, Technology, and Implementation & Migration layers
-- **Relationship Validation**: Enforces valid ArchiMate relationships per the specification
+- **Relationship Validation**: Enforces valid ArchiMate relationships by looking them up in the relationship tables of Appendix B.5
 - **LLM-Friendly Design**: Layer-specific tools with enumerated element types guide correct usage
 - **coArchi2 Compatible**: Reads and writes `model.archimate` XML files
 - **ArchiMate Exchange Format**: Import/export using the standard ArchiMate Open Exchange Format
@@ -245,9 +245,19 @@ export ARCHIMATE_AUDIT_LOG=disabled               # Disable logging
 The server validates relationships against the ArchiMate 3.2 specification. Invalid relationships are rejected with helpful error messages:
 
 ```
-Error: Assignment is not a valid relationship between DataObject and BusinessActor
-Suggestions: Realization, Serving, Association, Flow
+Error: Assignment is not a valid relationship between DataObject and BusinessActor in ArchiMate 3.2
+Suggestions: Association
 ```
+
+The answer comes from a lookup in the relationship tables of Appendix B.5, the
+normative list of every relationship the language permits. `src/relationships/
+matrix.generated.ts` is generated from `relationships.xml` in the Archi
+repository, which is a machine-readable rendering of that appendix.
+
+The tables state whether a relationship is permitted. They do not distinguish
+direct from derived, and they do not cover the derivation restrictions of B.4,
+junctions and relationships between relationships of B.6, or viewpoint
+constraints. See [docs/relationship-validation.md](docs/relationship-validation.md).
 
 ## Project Structure
 
@@ -260,7 +270,8 @@ archimate-mcp-server/
 │   │   ├── parser.ts         # XML model parser
 │   │   └── writer.ts         # XML model writer
 │   ├── relationships/
-│   │   └── validation.ts     # Relationship validation
+│   │   ├── validation.ts          # Relationship validation
+│   │   └── matrix.generated.ts    # Appendix B.5 tables, generated
 │   ├── exporters/
 │   │   ├── mermaid-exporter.ts    # Mermaid diagram generation
 │   │   ├── svg-exporter.ts        # SVG/PNG diagram rendering
@@ -271,6 +282,10 @@ archimate-mcp-server/
 │   │   └── exchange-writer.ts     # ArchiMate Exchange export
 │   └── audit/
 │       └── logger.ts              # Audit logging system
+├── scripts/
+│   └── generate-matrix.mjs   # Regenerates matrix.generated.ts
+├── docs/
+│   └── relationship-validation.md
 ├── dist/                     # Compiled output
 ├── package.json
 ├── tsconfig.json
