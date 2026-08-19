@@ -326,3 +326,15 @@ npm run test:coverage # Run tests with coverage
 
 MIT, copyright thijs-hakkenberg. See [LICENSE](LICENSE). This fork is
 distributed under the same terms.
+
+`src/relationships/matrix.generated.ts` is derived from `relationships.xml` in
+the [Archi](https://github.com/archimatetool/archi) repository, which is MIT
+licensed, copyright 2013-2026 Phillip Beauvoir, Jean-Baptiste Sarrodie, The Open
+Group. Its notice is reproduced in [NOTICE](NOTICE) and in the generated file.
+
+The ArchiMate 3.2 Specification itself is copyright The Open Group and is
+neither included in nor redistributed with this repository.
+
+ArchiMate is a registered trademark of The Open Group. This project is an
+independent implementation and is not certified by, endorsed by, or affiliated
+with The Open Group. See [NOTICE](NOTICE).
