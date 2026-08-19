@@ -1,5 +1,19 @@
 # ArchiMate MCP Server
 
+> **This is a fork.** Upstream is
+> [thijs-hakkenberg/archimate-mcp](https://github.com/thijs-hakkenberg/archimate-mcp),
+> MIT licensed, copyright thijs-hakkenberg. All credit for the server itself
+> goes there; this fork only changes how relationships are validated.
+>
+> **What differs from upstream:** relationship validation is a lookup in the
+> ArchiMate 3.2 relationship tables (Appendix B.5) instead of a set of rules over
+> element categories. Measured over all 39.600 combinations, upstream 0.4.0
+> rejects 2.091 relationships the specification permits and accepts 6.544 it
+> lists nowhere. See [docs/relationship-validation.md](docs/relationship-validation.md).
+>
+> **The npx install route below does not include this change.** It installs the
+> upstream package from npm. Build from source against this repository instead.
+
 An MCP (Model Context Protocol) server that enables LLMs to work with ArchiMate models stored in coArchi2 repositories. The server design follows the ArchiMate 3.2 specification structure, making it intuitive for LLMs to select appropriate layers, elements, and relationships.
 
 ## Features
@@ -23,30 +37,38 @@ An MCP (Model Context Protocol) server that enables LLMs to work with ArchiMate 
 ### Build from Source
 
 ```bash
-cd archimate-mcp-server
+cd archimate-mcp
 npm install
 npm run build
 ```
 
 ## Usage with Claude Code
 
-### Quick Install (npx, auto-updates)
+### Build from Source (this fork)
+
+Clone and build, then add to Claude Code:
+
+```bash
+git clone https://github.com/wilcohub/archimate-mcp-private.git archimate-mcp
+cd archimate-mcp
+npm install
+npm run build
+npm test
+claude mcp add archimate -- node $(pwd)/dist/index.js
+```
+
+Restart the MCP server after every rebuild, otherwise the previously loaded
+build keeps running.
+
+### Quick Install (npx, auto-updates) — upstream only
 
 ```bash
 claude mcp add archimate -- npx -y archimate-mcp-server@latest
 ```
 
-### Build from Source
-
-Clone and build, then add to Claude Code:
-
-```bash
-git clone https://github.com/thijs-hakkenberg/archimate-mcp.git
-cd archimate-mcp
-npm install
-npm run build
-claude mcp add archimate -- node $(pwd)/dist/index.js
-```
+This installs the upstream package from npm and therefore **does not** contain
+the relationship validation change described at the top of this file. Every
+start fetches the latest published version.
 
 Verify it was added:
 ```bash
@@ -302,4 +324,5 @@ npm run test:coverage # Run tests with coverage
 
 ## License
 
-MIT
+MIT, copyright thijs-hakkenberg. See [LICENSE](LICENSE). This fork is
+distributed under the same terms.
