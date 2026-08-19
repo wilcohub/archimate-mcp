@@ -49,7 +49,7 @@ npm run build
 Clone and build, then add to Claude Code:
 
 ```bash
-git clone https://github.com/wilcohub/archimate-mcp-private.git archimate-mcp
+git clone https://github.com/wilcohub/archimate-mcp.git
 cd archimate-mcp
 npm install
 npm run build
