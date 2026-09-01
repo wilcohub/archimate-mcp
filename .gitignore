@@ -5,3 +5,6 @@ demo-models/
 .DS_Store
 test-audit-*.ndjson
 coverage/
+*.skill
+.env
+.env.local
