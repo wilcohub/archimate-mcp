@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Dependency bumps: fast-xml-parser to ^5.10.1, sharp to ^0.35.3, uuid to ^14.0.1, vitest and @vitest/coverage-v8 to ^4.1.10, @amiceli/vitest-cucumber to ^7.0.0.
 
+### Security
+- Resolved all `npm audit` findings (3 high, 6 moderate). Lockfile refresh moves sharp to 0.35.5 (libheif advisories) and the MCP SDK's transitive fast-uri, hono, qs and ip-address to patched versions; brace-expansion patched in dev tooling. vitest and @vitest/coverage-v8 bumped to ^4.1.11 (path traversal in @vitest/mocker); this pulls in vite 8, which bundles with rolldown instead of esbuild/rollup.
+
 ## [0.4.0] - 2026-05-05
 
 ### Added
