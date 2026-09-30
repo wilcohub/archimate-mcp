@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { AuditLogger, type AuditEntry } from './logger.js';
 
@@ -29,6 +30,18 @@ describe('AuditLogger', () => {
       const defaultLogger = new AuditLogger();
       expect(defaultLogger.getLogPath()).toContain('archimate-audit.ndjson');
       defaultLogger.close();
+    });
+
+    it('should default to the home directory, not the working directory', () => {
+      const originalEnv = process.env.ARCHIMATE_AUDIT_LOG;
+      delete process.env.ARCHIMATE_AUDIT_LOG;
+      try {
+        const defaultLogger = new AuditLogger();
+        expect(defaultLogger.getLogPath()).toBe(path.join(os.homedir(), 'archimate-audit.ndjson'));
+        defaultLogger.close();
+      } finally {
+        if (originalEnv !== undefined) process.env.ARCHIMATE_AUDIT_LOG = originalEnv;
+      }
     });
 
     it('should be enabled by default', () => {
@@ -218,6 +231,28 @@ describe('AuditLogger', () => {
       const entries = nonExistentLogger.getEntries();
       expect(entries).toEqual([]);
       nonExistentLogger.close();
+    });
+  });
+
+  describe('unwritable log path', () => {
+    it('should not throw when the log file cannot be written', () => {
+      const blocker = path.join(process.cwd(), `test-audit-blocker-${Date.now()}`);
+      fs.writeFileSync(blocker, '');
+      const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+      const badLogger = new AuditLogger(path.join(blocker, 'audit.ndjson'));
+      try {
+        expect(() =>
+          badLogger.log({ event: 'e1', action: 'export', success: true, durationMs: 1 })
+        ).not.toThrow();
+        expect(() =>
+          badLogger.log({ event: 'e2', action: 'export', success: true, durationMs: 1 })
+        ).not.toThrow();
+        expect(stderr).toHaveBeenCalledTimes(1);
+      } finally {
+        stderr.mockRestore();
+        badLogger.close();
+        fs.unlinkSync(blocker);
+      }
     });
   });
 

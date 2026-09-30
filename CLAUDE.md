@@ -59,7 +59,7 @@ Test fixtures in `src/__tests__/fixtures/`:
 
 ## Environment Variables
 
-- `ARCHIMATE_AUDIT_LOG` - Path to audit log file, or "disabled" to turn off logging
+- `ARCHIMATE_AUDIT_LOG` - Path to audit log file, or "disabled" to turn off logging (default `~/archimate-audit.ndjson`; a failing write is reported on stderr, never thrown)
 
 ## Dependencies
 

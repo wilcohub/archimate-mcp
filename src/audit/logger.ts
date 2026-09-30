@@ -4,6 +4,7 @@
  */
 
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 export interface AuditEntry {
@@ -25,10 +26,20 @@ export type AuditLogInput = Omit<AuditEntry, 'timestamp'>;
 
 const DEFAULT_LOG_FILENAME = 'archimate-audit.ndjson';
 
+/**
+ * Default log location. The home directory rather than process.cwd(): MCP hosts
+ * such as Claude Desktop start the server with cwd set to '/', which is
+ * read-only, so a cwd-relative default made every audited tool fail with EROFS.
+ */
+function defaultLogPath(): string {
+  return path.join(os.homedir(), DEFAULT_LOG_FILENAME);
+}
+
 export class AuditLogger {
   private logPath: string;
   private enabled: boolean;
   private fd: number | null = null;
+  private warnedPath: string | null = null;
 
   constructor(logPath?: string) {
     // Check environment variable first
@@ -36,10 +47,10 @@ export class AuditLogger {
 
     if (envPath === 'disabled') {
       this.enabled = false;
-      this.logPath = logPath || path.join(process.cwd(), DEFAULT_LOG_FILENAME);
+      this.logPath = logPath || defaultLogPath();
     } else {
       this.enabled = true;
-      this.logPath = logPath || envPath || path.join(process.cwd(), DEFAULT_LOG_FILENAME);
+      this.logPath = logPath || envPath || defaultLogPath();
     }
   }
 
@@ -56,7 +67,9 @@ export class AuditLogger {
   }
 
   /**
-   * Log an audit entry (synchronous write for reliability)
+   * Log an audit entry (synchronous write for reliability).
+   * Never throws: a failing audit write must not break the tool that was audited.
+   * The first failure per log path is reported once on stderr.
    */
   log(entry: AuditLogInput): void {
     if (!this.enabled) {
@@ -68,8 +81,20 @@ export class AuditLogger {
       ...entry,
     };
 
-    this.ensureFileDescriptor();
-    fs.writeSync(this.fd!, JSON.stringify(fullEntry) + '\n');
+    try {
+      this.ensureFileDescriptor();
+      fs.writeSync(this.fd!, JSON.stringify(fullEntry) + '\n');
+    } catch (error) {
+      this.close();
+      if (this.warnedPath !== this.logPath) {
+        this.warnedPath = this.logPath;
+        const message = error instanceof Error ? error.message : String(error);
+        process.stderr.write(
+          `[archimate-mcp] audit log unavailable at ${this.logPath}: ${message}. ` +
+            'Continuing without audit logging; set ARCHIMATE_AUDIT_LOG to a writable path or "disabled".\n'
+        );
+      }
+    }
   }
 
   /**
@@ -133,7 +158,11 @@ export class AuditLogger {
    */
   close(): void {
     if (this.fd !== null) {
-      fs.closeSync(this.fd);
+      try {
+        fs.closeSync(this.fd);
+      } catch {
+        // descriptor already invalid; nothing to release
+      }
       this.fd = null;
     }
   }
